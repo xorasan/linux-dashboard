@@ -1,0 +1,30 @@
+{
+	"version": "1.5.6",
+	"name": "linux-dashboard",
+	"subtitle": "",
+	"description": "",
+	"display": "standalone",
+	"cursor": "false",
+	"start_url": "./",
+	"launch_path": "./",
+	"developer": {
+		"name": "Hasan Xorasani",
+		"url": "mailto:hxorasani@gmail.com"
+	},
+	"locales": {
+		"en-US": {
+			"name": "linux-dashboard",
+			"subtitle": "",
+			"description": ""
+		}
+	},
+	"default_locale": "en-US",
+	"icons": {
+		"56": "./0.png",
+		"112": "./1.png"
+	},
+	"origin": "app://linux-dashboard.xorasan",
+	"chrome": {
+		"statusbar": "overlap"
+	}
+}
