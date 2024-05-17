@@ -3,11 +3,13 @@ body
 	+include managed.htm.w
 	
 	[template=control_item] .control_item .bubble
+		canvas [id=graph] .canvas
 		[id=icon] .icon
-		.flex .row1
-			[id=title] .title
-			[id=state] .state
-		[id=info] .info
+		.mid .flex .vertical
+			.flex .row1
+				[id=title] .title
+				[id=state] .state
+			[id=info] .info
 		[id=switch] .switch
 
 	[template=time_item] .flex .vertical .time_item .bubble

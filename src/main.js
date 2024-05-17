@@ -1,4 +1,5 @@
-var controls_list, Dashboard = {};
+var controls_list, Dashboard = {}, memory_graph = [], battery_graph = [];
+const dbus = require('./deps/dbus-next');
 ;(async function(){
 	'use strict';
 
@@ -7,7 +8,6 @@ var controls_list, Dashboard = {};
 	const { exec } = require('child_process');
 	const os = require('os');
 	const fs = require('fs');
-	const dbus = require('./deps/dbus-next');
 	dbus.setBigIntCompat(true);
 	let bus = dbus.systemBus();
 	let Variant = dbus.Variant;
@@ -45,7 +45,37 @@ var controls_list, Dashboard = {};
 		return out.join('.') + '<small class="dim">'+units[index]+'</small>';
 	};
 
-	var update_memory_TO;
+	var update_memory_TO, max_mem_graph_steps = 60 * 10; // 600 * 1s = 600s / 60s = 5m
+	function update_memory_graph() {
+		var graph = controls_list.get_item_keys('mem').graph;
+		var w = graph.width, h = graph.height;
+		var canvas = Canvas( graph );
+		var step_width = (w + 10) / max_mem_graph_steps; // px
+		canvas.linewidth(2);
+		var points = [];
+
+		for (var i = 0; i < memory_graph.length; ++i) {
+			var o = memory_graph[i];
+			points.push({
+				x: (step_width * ( max_mem_graph_steps - memory_graph.length ) ) + i*step_width,
+				y: h*o
+			});
+		}
+
+		if (memory_graph.length) {
+			points.unshift( { x: points[0].x, y: h } );
+			points.push( { x: points[points.length-1].x, y: h } );
+		}
+
+		var color = Themes.get('accentt');
+
+		canvas.clear();
+		canvas.line(points, -1, {
+			w: 0,
+			h: h*1.5,
+			stops: [color, 'transparent']
+		});
+	}
 	Dashboard.update_memory = function () {
 		var used = os.totalmem() - os.freemem();
 		controls_list.set({
@@ -53,11 +83,165 @@ var controls_list, Dashboard = {};
 			info$h: formatBytes(used)+' used out of ' + formatBytes(os.totalmem()),
 			state$h: formatBytes(os.freemem()),
 		});
+		
+		var pct = os.freemem() / os.totalmem();
+		memory_graph.push(pct);
+		if (memory_graph.length > max_mem_graph_steps) memory_graph.shift();
+		update_memory_graph();
 
 		clearTimeout(update_memory_TO);
 		update_memory_TO = setTimeout(function () {
 			Dashboard.update_memory();
-		}, 2000);
+		}, 1000);
+	};
+
+	Dashboard.battery = {};
+	var update_battery_TO, max_bat_graph_steps = 60 * 10; // 600 * 5s = 3000s / 60s = 50m
+	const battery_state_index = {
+		0: 'Unknown',
+		1: 'Charging',
+		2: 'Discharging',
+		3: 'Empty',
+		4: 'Full',
+		5: 'Charging paused',
+		6: 'Pending discharge',
+		7: 'Suspended'
+	};
+	function battery_interval() {
+		// TODO give this the ability to handle sleep times
+		clearTimeout(update_battery_TO);
+		update_battery_TO = setTimeout(function () {
+			battery_graph.push(Dashboard.battery_pct/100);
+			if (battery_graph.length > max_bat_graph_steps) battery_graph.shift();
+			update_battery_graph();
+			battery_interval();
+		}, 5000);
+	}
+	function update_battery_graph() {
+		var graph = controls_list.get_item_keys('bat').graph;
+		var w = graph.width, h = graph.height;
+		var canvas = Canvas( graph );
+		var step_width = (w + 20) / max_bat_graph_steps; // px
+		canvas.linewidth(2);
+		var points = [];
+
+		for (var i = 0; i < battery_graph.length; ++i) {
+			var o = 1-battery_graph[i];
+			points.push({
+				x: (step_width * ( max_bat_graph_steps - battery_graph.length ) ) + i*step_width,
+				y: h*o
+			});
+		}
+
+		if (battery_graph.length) {
+			points.unshift( { x: points[0].x, y: h } );
+			points.push( { x: points[points.length-1].x, y: h } );
+		}
+
+		var color = Themes.get('accentt');
+
+		canvas.clear();
+		canvas.line(points, -1, {
+			w: 0,
+			h: h*1.5,
+			stops: [color, 'transparent']
+		});
+	}
+	function battery_state_to_icon(pct, state) {
+		// TODO make a batterychargingpaused icon
+		const thresholds = ['alert', 20, 30, 50, 60, 80, 90, 'full'];
+		const index = Math.min(Math.floor(pct / 10), thresholds.length - 1);
+		if ([1, 5].includes(state) && index === 0) index = 1;
+		return 'battery'+([1, 5].includes(state) ? 'charging' : '')+thresholds[index];
+	}
+	function update_battery_item() {
+		// TODO add support for multiple batteries and systems with no batteries as well as UPS
+		var icon, pct_sign = '<small class="dim">%</small>'; // TODO Weld(`small .dim "%"`)
+
+		var state = Dashboard.battery_state;
+		if (state === 0) icon = 'batteryunknown'
+		else if ([1, 2, 5, 6].includes(state)) icon = battery_state_to_icon(Dashboard.battery_pct, state);
+		else if (state === 3) icon = 'batteryalert';
+		else icon = 'batteryfull';
+
+		var energy = Dashboard.battery.energy;
+
+		controls_list.set({
+			uid: 'bat',
+			switch$h: Dashboard.battery_pct+pct_sign,
+			state: battery_state_index[Dashboard.battery_state],
+			info$h: Math.floor(energy.full / energy.design * 100) + pct_sign+' energy left',
+			icon$icon: 'icon'+icon,
+		});
+	}
+	Dashboard.update_battery = async function () {
+		controls_list.set({
+			uid: 'bat',
+			switch: '...',
+		});
+
+		var power_obj = await bus.getProxyObject('org.freedesktop.UPower', '/org/freedesktop/UPower');
+		var power_interface = power_obj.getInterface('org.freedesktop.UPower');
+		var devices = await power_interface.EnumerateDevices();
+		
+		if (devices.length < 2) {
+			controls_list.set({
+				uid: 'bat',
+				switch: 'N/A',
+			});
+			return;
+		}
+		
+		var line_power = devices[0];
+		var battery_power = devices[1];
+
+		var battery_obj = await bus.getProxyObject('org.freedesktop.UPower', battery_power);
+		var battery_properties = battery_obj.getInterface('org.freedesktop.DBus.Properties');
+		var power_device = 'org.freedesktop.UPower.Device';
+		var battery_pct = await battery_properties.Get(power_device, 'Percentage');
+		var battery_state = await battery_properties.Get(power_device, 'State');
+		
+		Dashboard.battery_state = battery_state.value;
+		Dashboard.battery_pct = battery_pct.value;
+		Dashboard.battery_properties = battery_properties;
+		Dashboard.battery.energy = {
+			empty: (await battery_properties.Get(power_device, 'EnergyEmpty')).value,
+			full: (await battery_properties.Get(power_device, 'EnergyFull')).value,
+			design: (await battery_properties.Get(power_device, 'EnergyFullDesign')).value,
+		};
+
+		update_battery_item();
+
+		battery_properties.on('PropertiesChanged', (iface, changed, invalidated) => {
+			var yes;
+			for (let prop of Object.keys(changed)) {
+				var value = changed[prop].value;
+				if (prop == 'Percentage') {
+					Dashboard.battery_pct = value;
+					yes = 1;
+				}
+				if (prop == 'State') {
+					Dashboard.battery_state = value;
+					yes = 1;
+				}
+				if (prop == 'EnergyEmpty') {
+					Dashboard.battery.energy.empty = value;
+					yes = 1;
+				}
+				if (prop == 'EnergyFull') {
+					Dashboard.battery.energy.full = value;
+					yes = 1;
+				}
+				if (prop == 'EnergyFullDesign') {
+					Dashboard.battery.energy.design = value;
+					yes = 1;
+				}
+//				console.log(`${iface} property changed: ${prop} => ${changed[prop].value} `);
+			}
+			if (yes) update_battery_item();
+		});
+
+		battery_interval();
 	};
 
 	var update_storage_TO;
@@ -127,6 +311,25 @@ var controls_list, Dashboard = {};
 		}, 2000);
 	};
 	
+	var update_apps_TO;
+	Dashboard.update_apps = async function () {
+		controls_list.set({ uid: 'apps', state: '...' });
+		var windows = await Apps.get_windows();
+		var processes = await Apps.get_processes();
+		controls_list.set({
+			uid: 'apps',
+			state: 'ixtaf',
+			info: Object.keys(windows.topmost).length+' windows with '
+				+Object.keys(processes).length+' processes',
+		});
+		
+		// TODO make this connect live with WM and update the list dynamically
+		clearTimeout(update_apps_TO);
+		update_apps_TO = setTimeout(function () {
+			Dashboard.update_apps();
+		}, 30000);
+	};
+	
 	Dashboard.bluetooth = {};
 	Dashboard.bluetooth_info = function () {
 		var info = [
@@ -175,11 +378,11 @@ var controls_list, Dashboard = {};
 	};
 
 	Hooks.set('ready', function (arg_one) {
-		(function () {
-			var w = nw.Screen.screens[0].work_area.width,
-				h = nw.Screen.screens[0].work_area.height;
-			nw.Window.get().moveTo(w - outerWidth, h - outerHeight - 66);
-		})();
+//		(function () {
+//			var w = nw.Screen.screens[0].work_area.width,
+//				h = nw.Screen.screens[0].work_area.height;
+//			nw.Window.get().moveTo(w - outerWidth, h - outerHeight - 66);
+//		})();
 		
 		Webapp.header();
 		Webapp.status_bar_padding();
@@ -191,19 +394,40 @@ var controls_list, Dashboard = {};
 		
 		Dashboard.update_time();
 
-		controls_list.set({ uid: 'wifi', title: 'WiFi', switch: 'ON' });
-		controls_list.set({ uid: 'bt', title: 'Bluetooth' });
-		controls_list.set({ uid: 'store', title: 'Storage', switch: 'ixtaf' });
-		controls_list.set({ uid: 'mem', title: 'Memory', switch: 'ixtaf' });
-		controls_list.set({ uid: 'bat', title: 'Battery', switch: 'ixtaf' });
-		controls_list.set({ uid: 'apps', title: 'Apps', switch: 'ixtaf' });
+		controls_list.set({ uid: 'wifi' , icon: 'iconwifi',			title: 'WiFi',		switch: 'ON' });
+		controls_list.set({ uid: 'bt'   , icon: 'iconbluetooth',	title: 'Bluetooth' });
+		controls_list.set({ uid: 'store', icon: 'iconstorage',		title: 'Storage',	switch: 'ixtaf' });
+		controls_list.set({ uid: 'mem'  , icon: 'iconmemory',		title: 'Memory',	switch: 'ixtaf' });
+		controls_list.set({ uid: 'bat'  , icon: 'iconbatteryfull',	title: 'Battery',	switch: 'ixtaf' });
+		controls_list.set({ uid: 'apps' , icon: 'iconapps',			title: 'Apps',		switch: 'ixtaf' });
 
 		Dashboard.update_bluetooth();
 		Dashboard.update_storage();
 		Dashboard.update_memory();
+		Dashboard.update_apps();
+		Dashboard.update_battery();
 		
+		on_resize();
 	});
 	
+	function draw_graphs () {
+		update_memory_graph();
+		update_battery_graph();
+	}
+	function on_resize () {
+		if (dom_keys)
+		$.taxeer('ldresize', function () {
+			var cans = dom_keys.list.querySelectorAll('canvas');
+			cans.forEach(function (o) {
+				var p = o.parentElement;
+				o.height = p.offsetHeight;
+				o.width = p.offsetWidth;
+			});
+			draw_graphs();
+		}, 20);
+	}
+	listener('resize', on_resize);
+
 	Hooks.set('view-ready', function (arg_one) { if (View.is_active_fully('main')) {
 		Softkeys.remove(K.sr);
 	}});

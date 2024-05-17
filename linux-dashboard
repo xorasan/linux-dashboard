@@ -1,0 +1,4 @@
+#! /bin/sh
+cd /home/nano/GitHub/linux-dashboard/
+nw-dev --disable-features=ProcessPerSiteUpToMainFrameThreshold \
+/home/nano/GitHub/linux-dashboard $*

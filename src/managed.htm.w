@@ -6,6 +6,7 @@
 +include linked/webapp.13inch.htm.w
 +include linked/list.htm.w
 +include linked/backstack.htm.w
++include linked/canvas.htm.w
 +include linked/preferences.htm.w
 +include linked/activity.htm.w
 +include linked/view.htm.w

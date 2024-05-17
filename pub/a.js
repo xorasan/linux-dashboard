@@ -1,4 +1,4 @@
-var Config={"deps":["dbus-next"],"copy_deps":"1","name":"linux-dashboard","width":"640","height":"800","frame":false,"root":"."};
+var Config={"deps":["dbus-next","x11"],"copy_deps":"1","name":"linux-dashboard","width":"640","height":"800","frame":false,"root":"."};
 
 function updatetheme(o) {
 return 'body {'
@@ -339,8 +339,14 @@ return 'body {'
 +'\n.control_item {'
 +'\n	border:1px solid '+o.secondary+';'
 +'\n}'
++'\n.control_item .icon {'
++'\n	background:linear-gradient(90deg, '+o.primaryxt+', transparent);'
++'\n}'
++'\n.control_item .icon svg {'
++'\n	fill:'+o.text+';'
++'\n}'
 +'\n.control_item .switch {'
-+'\n	background:'+o.primaryd+';'
++'\n	background:linear-gradient(-90deg, '+o.primaryxt+', transparent);'
 +'\n}';
 };
 
@@ -1791,6 +1797,7 @@ var Webapp, webapp, appname = 'linux-dashboard' || '',
 	Webapp = webapp = {
 		visible: 1,
 		isdimmed: 0,
+		has_focus: () => document.hasFocus(),
 		/* an array of features that can be check like
 		* 'feature' in window OR
 		* in Navigator OR
@@ -2070,7 +2077,7 @@ var Webapp, webapp, appname = 'linux-dashboard' || '',
 		if (text) {
 			if (text instanceof Array) {
 				element.dataset.i18n = text[0];
-				translate.update(itlaa3);
+				Translate.update(webapp_status_ui);
 			} else {
 				delete element.dataset.i18n,
 				element.innerText = text;
@@ -2084,7 +2091,7 @@ var Webapp, webapp, appname = 'linux-dashboard' || '',
 			$.taxeer('webapp_status', function () {
 				if (innerwidth() > 1024) webapp_status_ui.style.right = '-20px';
 				$.taxeer('webapp_status_final', function () {
-					webapp.itlaa3();
+					Webapp.status();
 				}, 100);
 			}, time||3000);
 		} else {
@@ -3028,8 +3035,12 @@ var List, list;
 			if (isnum(LV._muntahaa) && LV._muntahaa > -1) {
 				innertext(LV._muntahaabox, len+' / '+ LV._muntahaa);
 			}
-			this.keys.raees.hidden = len ? 0 : 1;
-			if (!this._mowdoo3) this.keys.raees.hidden = 1;
+			if (!this._mowdoo3) {
+				if (!this.keys.raees.hidden) this.keys.raees.hidden = 1;
+			} else {
+				var new_value = len ? 0 : 1;
+				if (this.keys.raees.hidden !== !!new_value) this.keys.raees.hidden = new_value;
+			}
 		},
 		mowdoo3: function (m, i18n) { // deprecated -> title
 			this._mowdoo3 = m || 0;
@@ -3274,6 +3285,117 @@ var Backstack, backstack;
 	});
 	s = Backstack.states;
 })();
+var Canvas, canvas;
+var calcdistance = function (x1, y1, x2, y2) {
+	var dx = x2 - x1; dx *= dx;
+	var dy = y2 - y1; dy *= dy;
+	return Math.sqrt( dx + dy );
+};
+;(function(){
+	var toradians = function (degs) {
+		return degs * Math.PI / 180;
+	};
+	var todegrees = function (angle) {
+		return angle * (180 / Math.PI);
+	};
+	var coordtoangle = function (x0, y0, x1, y1) {
+		var dx = x1 - x0;
+		var dy = y1 - y0;
+		var ang = todegrees( Math.atan2(dy, dx) );
+		return (ang < 0 ? ang + 360 : ang);
+	};
+	Canvas = canvas = function (element) {
+		var c = {
+			f: '#fff',
+			s: -1,
+			o: element.getContext('2d')
+		};
+		c.linedash = function (v) {
+			c.o.setLineDash(v || [])
+		};
+		c.linecap = function (v) {
+			c.o.lineCap = v;
+		};
+		c.linejoin = function (v) {
+			c.o.lineJoin = v;
+		};
+		c.linewidth = function (v) {
+			c.o.lineWidth = v;
+		};
+		c.fillcolor = function (v) { // { x, y, w, h, stops: [ [0, color], [1, color] ] }
+			c.f = v;
+			if (typeof v == 'object') {
+				var x = isundef(v.x) ? 0 : v.x;
+				var y = isundef(v.y) ? 0 : v.y;
+				var w = isundef(v.w) ? element.width : v.w;
+				var h = isundef(v.h) ? element.height : v.h;
+				var grd = c.o.createLinearGradient( x, y, w, h );
+				v.stops.forEach(function (item, i) {
+					if (item instanceof Array) {
+						grd.addColorStop(item[0], item[1] || 'black');
+					} else {
+						grd.addColorStop(i, item || 'black');
+					}
+				});
+				c.o.fillStyle = grd;
+			} else c.o.fillStyle = v;
+		};
+		c.strokecolor = function (v) {
+			c.s = v;
+			c.o.strokeStyle = v;
+		};
+		c.matn = function (x, y, m, s, f, mw) {
+			c.fillcolor(f);
+			c.strokecolor(s);
+			if (c.f !== -1) c.o.fillText(m, x, y, mw);
+			if (c.s !== -1) c.o.strokeText(m, x, y, mw);
+		};
+		c.rect = function (x, y, w, h, s, f) {
+			c.fillcolor(f);
+			c.strokecolor(s);
+			if (c.f !== -1) c.o.fillRect (x, y, w, h);
+			if (c.s !== -1) c.o.strokeRect (x, y, w, h);
+		};
+		c.line = function (points, s, f) {
+			c.fillcolor(f);
+			c.strokecolor(s);
+			var lw = c.o.lineWidth;
+			points.forEach(function (p, i) {
+				if (i === 0) {
+					c.o.beginPath();
+					c.o.moveTo(p.x, p.y);
+				}
+				if (p.c) {
+					c.o.quadraticCurveTo(p.cx, p.cy, p.x, p.y);
+				}
+				else {
+					c.o.lineTo(p.x, p.y);
+				}
+				if (i === points.length-1) {
+					if (s != -1) c.o.stroke();
+					if (f != -1) c.o.fill();
+				}
+			});
+			c.o.lineWidth = lw;
+		};
+		c.circle = function (x, y, r, sa, ea, s, f) {
+			c.fillcolor(f);
+			c.strokecolor(s);
+			c.o.beginPath(); // for a clean start
+			c.o.arc(x, y, r, toradians(sa || 0), toradians(ea || 360), 0);
+			if (f) c.o.fill();
+			if (s) c.o.stroke();
+		};
+		c.clear = function (x, y, w, h) {
+			c.o.clearRect(x || 0, y || 0, w || element.width, h || element.height);
+		};
+		c.text = c.matn;
+		return c;
+	};
+	Canvas.coordtoangle = coordtoangle;
+	Canvas.todegrees = todegrees;
+	Canvas.toradians = toradians;
+})();
 var Preferences, preferences;
 ;(function(){
 	'use strict';
@@ -3367,21 +3489,21 @@ var Preferences, preferences;
 		},
 	};
 	var buildnum = preferences.get('#', 1);
-	if ( buildnum != 156 ) {
+	if ( buildnum != 345 ) {
 		preferences.pop(3); // ruid
 		preferences.pop('@'); // last sync time
 		preferences.pop(4); // list view cache
 		preferences.pop(6); // initial sync done
 	}
-	preferences.set('#', 156);
+	preferences.set('#', 345);
 	Hooks.set('ready', function () {
-		if ( buildnum != 156 ) {
+		if ( buildnum != 345 ) {
 			$.taxeer('seeghahjadeedah', function () {
 				Hooks.run('seeghahjadeedah', buildnum);
 			}, 2000);
 		}
 	});
-	$.log.s( 156 );
+	$.log.s( 345 );
 })();
 var activity;
 ;(function(){
@@ -3950,7 +4072,7 @@ var Settings, settings, currentad;
 		open('https://github.com/xorasan/mudeer', '_blank');
 	}, 'iconmudeer']);
 	if (Config.repo) {
-		add([Config.appname+' '+156, function () {
+		add([Config.appname+' '+345, function () {
 			return Config.sub;
 		}, function () {
 			open(Config.repo, '_blank');
@@ -5437,8 +5559,8 @@ var Themes, themes;
 			tertiaryt: 'rgba(204,204,204,0.8)',
 			accentl: '#0bb8cb',
 			accent: '#00609a',
-			accentt: 'rgba(0, 67, 113, 0.7)',
-			accentxt: 'rgba(0, 67, 113, 0.4)',
+			accentt: 'rgba(112, 198, 255, 0.7)',
+			accentxt: 'rgba(112, 198, 255, 0.4)',
 			accentd: '#004371',
 			accentdt: 'rgba(0, 37, 93, 0.7)',
 			greend: '#0b0',
@@ -5511,8 +5633,8 @@ var Themes, themes;
 			tertiaryt: 'rgba(204,204,204,0.8)',
 			accentl: '#0bb8cb',
 			accent: '#00609a',
-			accentt: 'rgba(0, 67, 113, 0.7)',
-			accentxt: 'rgba(0, 67, 113, 0.4)',
+			accentt: 'rgba(112, 198, 255, 0.7)',
+			accentxt: 'rgba(112, 198, 255, 0.4)',
 			accentd: '#004371',
 			accentdt: 'rgba(0, 37, 93, 0.7)',
 			greend: '#0b0',
@@ -5542,7 +5664,7 @@ var Themes, themes;
 		* that refer to slang css variables
 		*
 		* +if only theme & key are provided and not value
-		* assumes that key is an object representing theme
+		* assumes theme is key, and key is value and set it into the current theme
 		*
 		* +if key and value are also provided
 		* inside a store.theme, set a key to value
@@ -5550,7 +5672,7 @@ var Themes, themes;
 		set: function (theme, key, value) {
 			var arglen = arguments.length;
 			if (arglen === 0) {
-				themes.set(current);
+				Themes.set(current);
 			}
 			if (arglen === 1) {
 				if (store[theme]) {
@@ -5559,7 +5681,8 @@ var Themes, themes;
 				}
 			}
 			if (arglen === 2) {
-				store[theme] = key;
+				store[current] = store[current] || {};
+				store[current][theme] = key;
 			}
 			if (arglen === 3) {
 				store[theme] = store[theme] || {};
@@ -6053,14 +6176,179 @@ var Dialog, dialog,
 		}
 	});*/
 })();
-var controls_list, Dashboard = {};
+var Apps = {};
+const x11 = require('./deps/x11');
+const child_process = require('child_process');
+const util = require('util');
+const exec = util.promisify(child_process.exec);
+;(function(){
+function escape_regexp(string) {
+return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function match_rough(haystack, needle) {
+	const escaped = escape_regexp(needle);
+	const pattern = new RegExp(escaped, "i");
+	return haystack.match(pattern);
+}
+function xprop_to_obj(output) {
+	const lines = output.trim().split('\n');
+	const out = {};
+	var current_prop;
+	lines.forEach(function (line, i) {
+		if (line.includes('=') || line.includes(':')) { // new prop
+			var splat;
+			var equal = line.indexOf('='), colon = line.indexOf(':');
+			if (equal > -1 && colon > -1) { // if both found, pick the first one & nullify the other one
+				if (equal < colon) colon = -1;
+				else equal = -1;
+			}
+			if (equal > -1) splat = line.split('=');
+			if (colon > -1) splat = line.split(':');
+			current_prop = splat[0].trim();
+			var value = splat.slice(1);
+			if (equal > -1) out[current_prop] = value.join('=').trim();
+			if (colon > -1) out[current_prop] = value.join(':').trim();
+		} else {
+			out[current_prop] += line;
+		}
+	});
+	return out;
+}
+function pid_to_name(output) {
+	const matches = output.match(/_NET_WM_PID\(CARDINAL\) = (\d+)/);
+	if (matches && matches[1]) {
+		const pid = parseInt(matches[1]);
+		exec(`ps -p ${pid} -o comm=`, (error, stdout, stderr) => {
+			if (error) {
+				err(`Error fetching process name for PID ${pid}: ${error.message}`);
+				return;
+			}
+			if (stderr) {
+				err(`Error fetching process name for PID ${pid}: ${stderr}`);
+				return;
+			}
+			const processName = stdout.trim();
+			$.log("Window ID:", windowId, "Process Name:", processName);
+		});
+	}
+}
+function print_prop(name, value) {
+	$.log( name, ': "', value, '"' );
+}
+function get_relevant_props(o) {
+	var r = {};
+	for (var i in o) {
+		var value = o[i];
+		if (match_rough(i, 'wm_name')) {
+			r.name = value.slice(1, -1).trim();
+		}
+		if (match_rough(i, 'wm_class(string)')) {
+			r.class = value.split(',').map(v => v.trim().slice(1, -1));
+		}
+		if (match_rough(i, 'wm_client_leader(window)')) {
+			r.leader = parseint(value.slice(12));
+		}
+	}
+	return r;
+}
+async function get_windows() {
+	var on_resolve, on_error;
+	var promise = new Promise(function (r, e) {
+		on_resolve = r; on_error = e;
+	});
+	x11.createClient(function(err, display) {
+		const X = display.client;
+		var windows = {
+			topmost: {},
+			all: {},
+		};
+		const get_window_attributes = function (wid) {
+			var resolve;
+			var promise = new Promise(function (r) {
+				resolve = r;
+			});
+			X.GetWindowAttributes(wid, function (e, v) {
+				resolve(v);
+			});
+			return promise;
+		};
+		const query_tree = function (wid) {
+			var resolve;
+			var promise = new Promise(function (r) {
+				resolve = r;
+			});
+			X.QueryTree(wid || display.screen[0].root, function(err, tree) {
+				if (err) throw err;
+				resolve(tree);
+			});
+			return promise;
+		};
+		async function get_children (parent, parent_obj) {
+			const tree = await query_tree(parent);
+			for await (var window_id of tree.children) {
+				var { error, stdout, stderr } = await exec(`xprop -id ${window_id}`);
+				if (error) {
+					$.log.e(`Error fetching process ID for window ${window_id}: ${error.message}`);
+				} else if (stderr) {
+					$.log.e(`Error fetching process ID for window ${window_id}: ${stderr}`);
+				} else {
+					var o = xprop_to_obj(stdout);
+					var out = parent_obj || windows.all;
+					var window = out[ window_id ] = get_relevant_props( o );
+					window.raw_props = o;
+					var attrs = await get_window_attributes(window_id);
+					window.raw_attrs = attrs;
+					if (attrs) {
+						if (!attrs.overrideRedirect // Skip override redirect windows (e.g., pop-up dialogs)
+							&& attrs.mapState !== 0 // IsViewable
+						) { // this window is topmost
+							if (window.name)
+								windows.topmost[window_id] = window;
+						}
+					}
+					var potential_children = {};
+					await get_children(window_id, potential_children);
+					if (Object.keys(potential_children).length) {
+						out[ window_id ].children = potential_children;
+					}
+				}
+			}
+		}
+		(async function(){
+			try {
+				await get_children();
+			} catch (e) {
+				$.log.e( e );
+			}
+			on_resolve( windows );
+			X.terminate();
+		})();
+	});
+	return promise;
+}
+async function get_processes() {
+	const { error, stdout, stderr } = await exec('ps -eo pid,comm');
+	if (error) throw error;
+	if (stderr) throw new Error(stderr);
+	const processes = stdout.trim().split('\n').slice(1); // split by lines and remove header
+	var out = {};
+	processes.forEach(process => {
+		const [ pid, name ] = process.trim().split(/\s+/);
+		out[pid] = name;
+	});
+	return out;
+}
+Apps.get_processes = get_processes;
+Apps.get_windows = get_windows;
+})();
+var controls_list, Dashboard = {}, memory_graph = [], battery_graph = [];
+const dbus = require('./deps/dbus-next');
 ;(async function(){
 	'use strict';
 	var dom_keys;
 	const { exec } = require('child_process');
 	const os = require('os');
 	const fs = require('fs');
-	const dbus = require('./deps/dbus-next');
 	dbus.setBigIntCompat(true);
 	let bus = dbus.systemBus();
 	let Variant = dbus.Variant;
@@ -6095,7 +6383,33 @@ var controls_list, Dashboard = {};
 		}
 		return out.join('.') + '<small class="dim">'+units[index]+'</small>';
 	};
-	var update_memory_TO;
+	var update_memory_TO, max_mem_graph_steps = 60 * 10; // 600 * 1s = 600s / 60s = 5m
+	function update_memory_graph() {
+		var graph = controls_list.get_item_keys('mem').graph;
+		var w = graph.width, h = graph.height;
+		var canvas = Canvas( graph );
+		var step_width = (w + 10) / max_mem_graph_steps; // px
+		canvas.linewidth(2);
+		var points = [];
+		for (var i = 0; i < memory_graph.length; ++i) {
+			var o = memory_graph[i];
+			points.push({
+				x: (step_width * ( max_mem_graph_steps - memory_graph.length ) ) + i*step_width,
+				y: h*o
+			});
+		}
+		if (memory_graph.length) {
+			points.unshift( { x: points[0].x, y: h } );
+			points.push( { x: points[points.length-1].x, y: h } );
+		}
+		var color = Themes.get('accentt');
+		canvas.clear();
+		canvas.line(points, -1, {
+			w: 0,
+			h: h*1.5,
+			stops: [color, 'transparent']
+		});
+	}
 	Dashboard.update_memory = function () {
 		var used = os.totalmem() - os.freemem();
 		controls_list.set({
@@ -6103,10 +6417,144 @@ var controls_list, Dashboard = {};
 			info$h: formatBytes(used)+' used out of ' + formatBytes(os.totalmem()),
 			state$h: formatBytes(os.freemem()),
 		});
+		var pct = os.freemem() / os.totalmem();
+		memory_graph.push(pct);
+		if (memory_graph.length > max_mem_graph_steps) memory_graph.shift();
+		update_memory_graph();
 		clearTimeout(update_memory_TO);
 		update_memory_TO = setTimeout(function () {
 			Dashboard.update_memory();
-		}, 2000);
+		}, 1000);
+	};
+	Dashboard.battery = {};
+	var update_battery_TO, max_bat_graph_steps = 60 * 10; // 600 * 5s = 3000s / 60s = 50m
+	const battery_state_index = {
+		0: 'Unknown',
+		1: 'Charging',
+		2: 'Discharging',
+		3: 'Empty',
+		4: 'Full',
+		5: 'Charging paused',
+		6: 'Pending discharge',
+		7: 'Suspended'
+	};
+	function battery_interval() {
+		clearTimeout(update_battery_TO);
+		update_battery_TO = setTimeout(function () {
+			battery_graph.push(Dashboard.battery_pct/100);
+			if (battery_graph.length > max_bat_graph_steps) battery_graph.shift();
+			update_battery_graph();
+			battery_interval();
+		}, 5000);
+	}
+	function update_battery_graph() {
+		var graph = controls_list.get_item_keys('bat').graph;
+		var w = graph.width, h = graph.height;
+		var canvas = Canvas( graph );
+		var step_width = (w + 20) / max_bat_graph_steps; // px
+		canvas.linewidth(2);
+		var points = [];
+		for (var i = 0; i < battery_graph.length; ++i) {
+			var o = 1-battery_graph[i];
+			points.push({
+				x: (step_width * ( max_bat_graph_steps - battery_graph.length ) ) + i*step_width,
+				y: h*o
+			});
+		}
+		if (battery_graph.length) {
+			points.unshift( { x: points[0].x, y: h } );
+			points.push( { x: points[points.length-1].x, y: h } );
+		}
+		var color = Themes.get('accentt');
+		canvas.clear();
+		canvas.line(points, -1, {
+			w: 0,
+			h: h*1.5,
+			stops: [color, 'transparent']
+		});
+	}
+	function battery_state_to_icon(pct, state) {
+		const thresholds = ['alert', 20, 30, 50, 60, 80, 90, 'full'];
+		const index = Math.min(Math.floor(pct / 10), thresholds.length - 1);
+		if ([1, 5].includes(state) && index === 0) index = 1;
+		return 'battery'+([1, 5].includes(state) ? 'charging' : '')+thresholds[index];
+	}
+	Dashboard.battery_state_to_icon = battery_state_to_icon;
+	function update_battery_item() {
+		var icon, pct_sign = '<small class="dim">%</small>'; // TODO Weld(`small .dim "%"`)
+		var state = Dashboard.battery_state;
+		if (state === 0) icon = 'batteryunknown'
+		else if ([1, 2, 5, 6].includes(state)) icon = battery_state_to_icon(Dashboard.battery_pct, state);
+		else if (state === 3) icon = 'batteryalert';
+		else icon = 'batteryfull';
+		var energy = Dashboard.battery.energy;
+		controls_list.set({
+			uid: 'bat',
+			switch$h: Dashboard.battery_pct+pct_sign,
+			state: battery_state_index[Dashboard.battery_state],
+			info$h: Math.floor(energy.full / energy.design * 100) + pct_sign+' energy left',
+			icon$icon: 'icon'+icon,
+		});
+	}
+	Dashboard.update_battery = async function () {
+		controls_list.set({
+			uid: 'bat',
+			switch: '...',
+		});
+		var power_obj = await bus.getProxyObject('org.freedesktop.UPower', '/org/freedesktop/UPower');
+		var power_interface = power_obj.getInterface('org.freedesktop.UPower');
+		var devices = await power_interface.EnumerateDevices();
+		if (devices.length < 2) {
+			controls_list.set({
+				uid: 'bat',
+				switch: 'N/A',
+			});
+			return;
+		}
+		var line_power = devices[0];
+		var battery_power = devices[1];
+		var battery_obj = await bus.getProxyObject('org.freedesktop.UPower', battery_power);
+		var battery_properties = battery_obj.getInterface('org.freedesktop.DBus.Properties');
+		var power_device = 'org.freedesktop.UPower.Device';
+		var battery_pct = await battery_properties.Get(power_device, 'Percentage');
+		var battery_state = await battery_properties.Get(power_device, 'State');
+		Dashboard.battery_state = battery_state.value;
+		Dashboard.battery_pct = battery_pct.value;
+		Dashboard.battery_properties = battery_properties;
+		Dashboard.battery.energy = {
+			empty: (await battery_properties.Get(power_device, 'EnergyEmpty')).value,
+			full: (await battery_properties.Get(power_device, 'EnergyFull')).value,
+			design: (await battery_properties.Get(power_device, 'EnergyFullDesign')).value,
+		};
+		update_battery_item();
+		battery_properties.on('PropertiesChanged', (iface, changed, invalidated) => {
+			var yes;
+			for (let prop of Object.keys(changed)) {
+				var value = changed[prop].value;
+				if (prop == 'Percentage') {
+					Dashboard.battery_pct = value;
+					yes = 1;
+				}
+				if (prop == 'State') {
+					Dashboard.battery_state = value;
+					yes = 1;
+				}
+				if (prop == 'EnergyEmpty') {
+					Dashboard.battery.energy.empty = value;
+					yes = 1;
+				}
+				if (prop == 'EnergyFull') {
+					Dashboard.battery.energy.full = value;
+					yes = 1;
+				}
+				if (prop == 'EnergyFullDesign') {
+					Dashboard.battery.energy.design = value;
+					yes = 1;
+				}
+			}
+			if (yes) update_battery_item();
+		});
+		battery_interval();
 	};
 	var update_storage_TO;
 	Dashboard.update_storage = function () {
@@ -6162,6 +6610,22 @@ var controls_list, Dashboard = {};
 			Dashboard.update_time();
 		}, 2000);
 	};
+	var update_apps_TO;
+	Dashboard.update_apps = async function () {
+		controls_list.set({ uid: 'apps', state: '...' });
+		var windows = await Apps.get_windows();
+		var processes = await Apps.get_processes();
+		controls_list.set({
+			uid: 'apps',
+			state: 'ixtaf',
+			info: Object.keys(windows.topmost).length+' windows with '
+				+Object.keys(processes).length+' processes',
+		});
+		clearTimeout(update_apps_TO);
+		update_apps_TO = setTimeout(function () {
+			Dashboard.update_apps();
+		}, 30000);
+	};
 	Dashboard.bluetooth = {};
 	Dashboard.bluetooth_info = function () {
 		var info = [
@@ -6203,27 +6667,42 @@ var controls_list, Dashboard = {};
 		});
 	};
 	Hooks.set('ready', function (arg_one) {
-		(function () {
-			var w = nw.Screen.screens[0].work_area.width,
-				h = nw.Screen.screens[0].work_area.height;
-			nw.Window.get().moveTo(w - outerWidth, h - outerHeight - 66);
-		})();
 		Webapp.header();
 		Webapp.status_bar_padding();
 		Webapp.tall_screen();
 		dom_keys = View.dom_keys('main');
 		controls_list = List( dom_keys.list ).id_prefix('controls').list_item('control_item');
 		Dashboard.update_time();
-		controls_list.set({ uid: 'wifi', title: 'WiFi', switch: 'ON' });
-		controls_list.set({ uid: 'bt', title: 'Bluetooth' });
-		controls_list.set({ uid: 'store', title: 'Storage', switch: 'ixtaf' });
-		controls_list.set({ uid: 'mem', title: 'Memory', switch: 'ixtaf' });
-		controls_list.set({ uid: 'bat', title: 'Battery', switch: 'ixtaf' });
-		controls_list.set({ uid: 'apps', title: 'Apps', switch: 'ixtaf' });
+		controls_list.set({ uid: 'wifi' , icon: 'iconwifi', title: 'WiFi', switch: 'ON' });
+		controls_list.set({ uid: 'bt' , icon: 'iconbluetooth', title: 'Bluetooth' });
+		controls_list.set({ uid: 'store', icon: 'iconstorage', title: 'Storage', switch: 'ixtaf' });
+		controls_list.set({ uid: 'mem' , icon: 'iconmemory', title: 'Memory', switch: 'ixtaf' });
+		controls_list.set({ uid: 'bat' , icon: 'iconbatteryfull', title: 'Battery', switch: 'ixtaf' });
+		controls_list.set({ uid: 'apps' , icon: 'iconapps', title: 'Apps', switch: 'ixtaf' });
 		Dashboard.update_bluetooth();
 		Dashboard.update_storage();
 		Dashboard.update_memory();
+		Dashboard.update_apps();
+		Dashboard.update_battery();
+		on_resize();
 	});
+	function draw_graphs () {
+		update_memory_graph();
+		update_battery_graph();
+	}
+	function on_resize () {
+		if (dom_keys)
+		$.taxeer('ldresize', function () {
+			var cans = dom_keys.list.querySelectorAll('canvas');
+			cans.forEach(function (o) {
+				var p = o.parentElement;
+				o.height = p.offsetHeight;
+				o.width = p.offsetWidth;
+			});
+			draw_graphs();
+		}, 20);
+	}
+	listener('resize', on_resize);
 	Hooks.set('view-ready', function (arg_one) { if (View.is_active_fully('main')) {
 		Softkeys.remove(K.sr);
 	}});

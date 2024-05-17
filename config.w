@@ -2,6 +2,7 @@ kernel
 	frontend
 deps
 	dbus-next
+	x11
 copy_deps	1
 src
 	hooks
@@ -19,6 +20,7 @@ src
 	list
 	templates
 	headings
+	canvas
 	helpers
 	network
 	head
@@ -52,7 +54,24 @@ icons
 	bluetooth
 	storage
 	memory
+
+	battery20
+	battery30
+	battery50
+	battery60
+	battery80
+	battery90
+	batteryalert
+	batterycharging20
+	batterycharging30
+	batterycharging50
+	batterycharging60
+	batterycharging80
+	batterycharging90
+	batterychargingfull
 	batteryfull
+	batteryunknown
+
 	apps
 langs
 	en
@@ -65,6 +84,7 @@ include
 	webapp.13inch
 	list
 	backstack
+	canvas
 	preferences
 	activity
 	view

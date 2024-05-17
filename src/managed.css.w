@@ -6,6 +6,7 @@
 +include linked/webapp.13inch.css.w
 +include linked/list.css.w
 +include linked/backstack.css.w
++include linked/canvas.css.w
 +include linked/preferences.css.w
 +include linked/activity.css.w
 +include linked/view.css.w

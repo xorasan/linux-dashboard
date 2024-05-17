@@ -6,6 +6,7 @@
 +include linked/webapp.13inch.js
 +include linked/list.js
 +include linked/backstack.js
++include linked/canvas.js
 +include linked/preferences.js
 +include linked/activity.js
 +include linked/view.js
