@@ -4,6 +4,8 @@
 +include linked/webapp.css.w
 +include linked/webapp.3inch.css.w
 +include linked/webapp.13inch.css.w
++include linked/weld.css.w
++include linked/weld.htm.css.w
 +include linked/list.css.w
 +include linked/backstack.css.w
 +include linked/canvas.css.w

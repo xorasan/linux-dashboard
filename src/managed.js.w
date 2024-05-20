@@ -4,6 +4,8 @@
 +include linked/webapp.js
 +include linked/webapp.3inch.js
 +include linked/webapp.13inch.js
++include linked/weld.js
++include linked/weld.htm.js
 +include linked/list.js
 +include linked/backstack.js
 +include linked/canvas.js

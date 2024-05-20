@@ -11,6 +11,7 @@ softkeystouchdpad       softkeystouchdpad
 tallscreenpadding       tallscreenpadding
 appcachedoffline        appcachedoffline
 iconbatteryalert        iconbatteryalert
+iconcallreceived        iconcallreceived
 statusbarpadding        statusbarpadding
 newversionfound         newversionfound
 seeghahjadeedah         seeghahjadeedah
@@ -44,6 +45,7 @@ justifycenter           justifycenter
 narrowletters           narrowletters
 offlinesince            offlinesince
 transparency            transparency
+iconcallmade            iconcallmade
 iconmorevert            iconmorevert
 iconsettings            iconsettings
 taxeercancel            taxeercancel
@@ -137,6 +139,7 @@ language                language
 iconapps                iconapps
 icondone                icondone
 iconhelp                iconhelp
+icontoys                icontoys
 iconwifi                iconwifi
 toNative                toNative
 _process                _process
@@ -362,6 +365,7 @@ past                    past
 hide                    hide
 star                    star
 hash                    hash
+mini                    mini
 info                    info
 time                    time
 date                    date

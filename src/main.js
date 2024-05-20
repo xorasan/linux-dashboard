@@ -7,10 +7,10 @@ const dbus = require('./deps/dbus-next');
 
 	const { exec } = require('child_process');
 	const os = require('os');
+	const os_utils = require('./deps/os-utils');
 	const fs = require('fs');
 	dbus.setBigIntCompat(true);
 	let bus = dbus.systemBus();
-	let Variant = dbus.Variant;
 
 	function bytesToGB(bytes) {
 		return (bytes / (1024 * 1024 * 1024)).toFixed(2);
@@ -44,6 +44,14 @@ const dbus = require('./deps/dbus-next');
 		}
 		return out.join('.') + '<small class="dim">'+units[index]+'</small>';
 	};
+	function format_small_point(pct, sign = '%', places = 1) {
+		var out = parsefloat(pct, places)+'';
+		out = out.split('.');
+		if (out.length > 1) {
+			out[1] = '<small>.'+(out[1])+'</small>';
+		}
+		return out[0]+out.slice(1).join(' ') + '<small class="dim">'+sign+'</small>';
+	}
 
 	var update_memory_TO, max_mem_graph_steps = 60 * 10; // 600 * 1s = 600s / 60s = 5m
 	function update_memory_graph() {
@@ -244,6 +252,36 @@ const dbus = require('./deps/dbus-next');
 		battery_interval();
 	};
 
+	var update_wifi_TO;
+	Dashboard.wifi = { down: 0, up: 0 };
+	Dashboard.update_wifi = async function () {
+		controls_list.set({ uid: 'wifi', state: '...' });
+
+		var stats = await os_utils.netstat.stats();
+
+		stats.forEach(function (o, i) {
+			if (o.interface == 'wlan0') {
+				Dashboard.wifi.down = parseint(o.inputBytes);
+				Dashboard.wifi.up = parseint(o.outputBytes);
+			}
+		});
+		
+
+		var clone = controls_list.set({
+			uid: 'wifi',
+			state$h: formatBytes(Dashboard.wifi.down+Dashboard.wifi.up),
+			out_str$h: formatBytes(Dashboard.wifi.up),
+			in_str$h: formatBytes(Dashboard.wifi.down),
+		});
+		
+		Webapp.icons(clone);
+
+		clearTimeout(update_wifi_TO);
+		update_wifi_TO = setTimeout(function () {
+			Dashboard.update_wifi();
+		}, 60 * 1000);
+	};
+
 	var update_storage_TO;
 	Dashboard.update_storage = function () {
 		controls_list.set({ uid: 'store', state: '...' });
@@ -341,40 +379,63 @@ const dbus = require('./deps/dbus-next');
 			info,
 		});
 	};
-	Dashboard.update_bluetooth = async function () {
-		controls_list.set({
-			uid: 'bt',
-			switch: '...',
+
+	var update_processor_TO, processor_graph = [], max_cpu_graph_steps = 60 * 5;
+	Dashboard.processor = {};
+	function update_processor_graph() {
+		var graph = controls_list.get_item_keys('cpu').graph;
+		var w = graph.width, h = graph.height;
+		var canvas = Canvas( graph );
+		var step_width = (w + 10) / max_cpu_graph_steps; // px
+		canvas.linewidth(2);
+		var points = [];
+
+		for (var i = 0; i < processor_graph.length; ++i) {
+			var o = processor_graph[i];
+			points.push({
+				x: (step_width * ( max_cpu_graph_steps - processor_graph.length ) ) + i*step_width,
+				y: h*o
+			});
+		}
+
+		if (processor_graph.length) {
+			points.unshift( { x: points[0].x, y: h } );
+			points.push( { x: points[points.length-1].x, y: h } );
+		}
+
+		var color = Themes.get('accentt');
+
+		canvas.clear();
+		canvas.line(points, -1, {
+			w: 0,
+			h: h*2.5,
+			stops: [color, 'transparent']
 		});
-		
-		let obj = await bus.getProxyObject('org.bluez', '/org/bluez/hci0');
-		let adapter = obj.getInterface('org.bluez.Adapter1');
-		let properties = obj.getInterface('org.freedesktop.DBus.Properties');
-		
-		var bluetooth_powered = await properties.Get('org.bluez.Adapter1', 'Powered');
-		
+	}
+	async function get_processor_cores() {
+		var avg_usage = await os_utils.cpu.usage();
+
 		controls_list.set({
-			uid: 'bt',
-			switch: bluetooth_powered.value ? 'ON' : 'OFF',
+			uid: 'cpu',
+			switch$h: format_small_point(avg_usage),
 		});
 
-		Dashboard.bt_props = properties;
-		
-		properties.on('PropertiesChanged', (iface, changed, invalidated) => {
-			for (let prop of Object.keys(changed)) {
-				if (prop == 'Powered') {
-					controls_list.set({
-						uid: 'bt',
-						switch: changed[prop].value ? 'ON' : 'OFF',
-					});
-				}
-				if (prop == 'Discovering') {
-					Dashboard.bluetooth.discovering = changed[prop].value;
-					Dashboard.bluetooth_info();
-				}
-				console.log(`${iface} property changed: ${prop} => ${changed[prop].value} `);
-			}
+		processor_graph.push(1-avg_usage/100);
+		if (processor_graph.length > max_cpu_graph_steps) processor_graph.shift();
+		update_processor_graph();
+
+		clearTimeout(update_processor_TO);
+		update_processor_TO = setTimeout(async function () {
+			await get_processor_cores();
+		}, 1000);
+	}
+	Dashboard.update_processor = function () {
+		controls_list.set({
+			uid: 'cpu',
+			switch: '...',
 		});
+
+		get_processor_cores();
 	};
 
 	Hooks.set('ready', function (arg_one) {
@@ -391,18 +452,39 @@ const dbus = require('./deps/dbus-next');
 		dom_keys = View.dom_keys('main');
 		
 		controls_list = List( dom_keys.list ).id_prefix('controls').list_item('control_item');
+		controls_list.listen_on_press(function (o, k) {
+			if (k == K.en) { // enter
+				// TODO should the view hook have a global delay by default to avoid keypress bleeds
+				if (o.uid == 'bt') Hooks.run('view', 'bluetooth');
+			}
+		});
 		
 		Dashboard.update_time();
 
-		controls_list.set({ uid: 'wifi' , icon: 'iconwifi',			title: 'WiFi',		switch: 'ON' });
+		controls_list.set({ uid: 'wifi' , icon: 'iconwifi',			title: 'WiFi',		switch: 'ON',
+			info$h: Weld.decode_htm([
+				'.flex .center',
+				'\t.mini [icon=iconcallreceived] [id=in]',
+				'\t[id=in_str]',
+				'\t.padl .padr',
+				'\t.mini [icon=iconcallmade] [id=out]',
+				'\t[id=out_str]',
+			].join('\n')).parsed,
+		});
+		
+		controls_list.select_by_uid('time');
+
 		controls_list.set({ uid: 'bt'   , icon: 'iconbluetooth',	title: 'Bluetooth' });
 		controls_list.set({ uid: 'store', icon: 'iconstorage',		title: 'Storage',	switch: 'ixtaf' });
+		controls_list.set({ uid: 'cpu'  , icon: 'icontoys',			title: 'Processor',	switch: 'ixtaf' });
 		controls_list.set({ uid: 'mem'  , icon: 'iconmemory',		title: 'Memory',	switch: 'ixtaf' });
 		controls_list.set({ uid: 'bat'  , icon: 'iconbatteryfull',	title: 'Battery',	switch: 'ixtaf' });
 		controls_list.set({ uid: 'apps' , icon: 'iconapps',			title: 'Apps',		switch: 'ixtaf' });
 
-		Dashboard.update_bluetooth();
+		Dashboard.update_wifi();
+		Bluetooth.update();
 		Dashboard.update_storage();
+		Dashboard.update_processor();
 		Dashboard.update_memory();
 		Dashboard.update_apps();
 		Dashboard.update_battery();
@@ -429,6 +511,7 @@ const dbus = require('./deps/dbus-next');
 	listener('resize', on_resize);
 
 	Hooks.set('view-ready', function (arg_one) { if (View.is_active_fully('main')) {
+		Softkeys.list.basic(controls_list);
 		Softkeys.remove(K.sr);
 	}});
 

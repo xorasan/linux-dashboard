@@ -4,6 +4,8 @@
 +include linked/webapp.htm.w
 +include linked/webapp.3inch.htm.w
 +include linked/webapp.13inch.htm.w
++include linked/weld.htm.w
++include linked/weld.htm.htm.w
 +include linked/list.htm.w
 +include linked/backstack.htm.w
 +include linked/canvas.htm.w

@@ -2,6 +2,7 @@ kernel
 	frontend
 deps
 	dbus-next
+	os-utils
 	x11
 copy_deps	1
 src
@@ -18,6 +19,7 @@ src
 	dialog
 	backstack
 	list
+	weld
 	templates
 	headings
 	canvas
@@ -51,9 +53,13 @@ icons
 	morevert
 	
 	wifi
+	callmade
+	callreceived
+
 	bluetooth
 	storage
 	memory
+	toys
 
 	battery20
 	battery30
@@ -82,6 +88,8 @@ include
 	webapp
 	webapp.3inch
 	webapp.13inch
+	weld
+	weld.htm
 	list
 	backstack
 	canvas
@@ -101,6 +109,6 @@ include
 	softkeys.touch
 kind      client
 width	640
-height	800
+height	960
 frame	false
 root	.

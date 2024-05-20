@@ -28,6 +28,12 @@
 	font-weight		900
 .control_item .state
 	margin-left		10px
+.control_item .mini
+	display			inline-block
+	width			18px
+	height			18px
+.control_item .mini svg
+	fill			@textd
 .control_item .icon
 	position		absolute
 	bottom			0

@@ -1,4 +1,4 @@
-var Config={"deps":["dbus-next","x11"],"copy_deps":"1","name":"linux-dashboard","width":"640","height":"800","frame":false,"root":"."};
+var Config={"deps":["dbus-next","os-utils","x11"],"copy_deps":"1","name":"linux-dashboard","width":"640","height":"960","frame":false,"root":"."};
 
 function updatetheme(o) {
 return 'body {'
@@ -338,6 +338,9 @@ return 'body {'
 +'\n}'
 +'\n.control_item {'
 +'\n	border:1px solid '+o.secondary+';'
++'\n}'
++'\n.control_item .mini svg {'
++'\n	fill:'+o.textd+';'
 +'\n}'
 +'\n.control_item .icon {'
 +'\n	background:linear-gradient(90deg, '+o.primaryxt+', transparent);'
@@ -1952,8 +1955,8 @@ var Webapp, webapp, appname = 'linux-dashboard' || '',
 				if ( confirm(xlate('sure')) ) close();
 			} else close();
 		},
-		icons: function () {
-			var elements = doc.body.querySelectorAll('[data-icon]');
+		icons: function (parent) {
+			var elements = (parent||doc.body).querySelectorAll('[data-icon]');
 			for (var i in elements) {
 				if ( elements.hasOwnProperty(i) && elements[i].dataset.icon ) {
 					var e = icons.querySelector('#'+elements[i].dataset.icon);
@@ -2403,6 +2406,520 @@ var datepicker = datepicker || 0;
 			});
 		}
 	}, {passive: false});*/
+})();
+/*
+* Weld is a preprocessor
+* it's full version currently lives in the root folder
+* it's planned to be moved here once mudeer src modules can handle nesting under folder
+*
+* the proposed structure for future src module:
+* src/
+* weld.js
+* weld/
+* htm.js
+* js.js
+* config.js
+* ...
+*
+*
+* this file is a dirty hack to allow Mudeer apps to parse config.w files -_- :D :( :/
+*/
+var Weld;
+;(function(){
+function parse_weld( text ) {
+	if (typeof text !== 'string') $.log('text needs to be string');
+	text = (text || '')/*.split('---')[0]*/;
+	var levels = [],
+		lastlevel = 0,
+		lastelement = false,
+		parsedlines = [];
+	text = ( text || '' ).split('\n');
+	for (var i in text) {
+		var line = text[i];
+		var tabs = line.match(/^(\t*).*/i);
+		var level = tabs[1].length;
+		line = line.replace(/^(\t*)(.*)/i, '$2');
+		line = line.replace(/([\t ]+)/gi, ' ');
+		var line = line.trim();
+		if (line.length > 0
+		&& !line.startsWith('//')) {
+			if (level > lastlevel) levels.push(lastelement);
+			if (level < lastlevel) levels = levels.slice(0, level);
+			lastelement = parseInt(i);
+			var parent = levels[level-1 ] === undefined ? -1 : levels[level-1 ];
+			parsedlines.push({
+				uid: parseInt(i) ,
+				line : line ,
+				level : level ,
+				root : levels[0 ] || -1 ,
+				parent : parent
+			});
+			lastlevel = level;
+		}
+	}
+	return parsedlines;
+};
+var _mod = {
+	/*
+	* returns all kids as strings in an array
+	* or returns '' if there are no kids
+	* */
+	childrentoarray: function (children) {
+		var array = [];
+		for (var i in children) {
+			array.push(children[i].line);
+		}
+		if (array.length === 0) return '';
+		return array;
+	},
+	/*
+		* returns true if
+		* all kids don't have children
+		* and they also don't have values
+		* */
+	allchildrenterminal: function (children) {
+		for (var i in children) {
+			if (children[i].children.length > 0 || children[i].value.length > 0) {
+				return false;
+			}
+		}
+		return true;
+	},
+	parseparenttag: function (tag, parent) {
+		if (tag.value.length > 0) {
+			parent.obj[tag.line] = tag.value;
+		} else if (tag.children.length > 0) {
+			if ( _mod.allchildrenterminal( tag.children ) ) {
+				parent.obj[tag.line] = _mod.childrentoarray( tag.children );
+			} else {
+				parent.obj[tag.line] = tag.obj;
+			}
+		} else if (tag.children.length === 1) {
+			if ( _mod.allchildrenterminal( tag.children ) ) {
+				parent.obj[tag.line] = _mod.childrentoarray( tag.children );
+			} else {
+				parent.obj[tag.line] = tag.obj;
+			}
+		} else {
+			if ( _mod.allchildrenterminal( tag.children ) ) {
+				parent.obj[tag.line] = _mod.childrentoarray( tag.children );
+			} else {
+				parent.obj[tag.line] = tag.line;
+			}
+		}
+	},
+	_parsevalue: function (value) {
+		if (value === 'true') return true;
+		if (value === 'false') return false;
+		return value;
+	},
+	parseroottag: function (tag, tree) {
+		if (tag.children.length > 0) {
+			if ( _mod.allchildrenterminal( tag.children ) ) {
+				tree[tag.line] = _mod.childrentoarray( tag.children );
+			} else {
+				tree[tag.line] = tag.obj;
+			}
+		} else {
+			if (tag.value.length > 0) {
+				tree[tag.line] = _mod._parsevalue(tag.value);
+			} else {
+				tree[tag.line] = true;
+			}
+		}
+	},
+	parse: function (parsedslang, options) {
+		var dictionary = {};
+		var tree = {};
+		for (var i in parsedslang) {
+			var command = parsedslang[i];
+			var tag = {
+				uid: parseInt(command.uid),
+				line: command.line,
+				level: command.level,
+				parent: command.parent,
+				children: [],
+				obj: {}
+			};
+			var splat = tag.line.split(' ');
+			tag.line = splat[0];
+			tag.value = splat.slice(1).join(' ');
+			dictionary[tag.uid] = tag;
+			if (command.parent > -1) {
+				dictionary[command.parent].children.push( tag );
+			}
+		}
+		for (var i in parsedslang) {
+			tag = dictionary[ parsedslang[i].uid ];
+			if (tag.parent > -1) {
+				var parent = dictionary[tag.parent];
+				_mod.parseparenttag(tag, parent);
+			} else {
+				_mod.parseroottag(tag, tree, dictionary);
+			}
+		}
+		return tree;
+	}
+};
+Weld = {
+	parse_weld,
+	parse_config: function ( text ) {
+		return _mod.parse( parse_weld( text ) );
+	},
+	/* converts json back to weld, each child level is represented by a \t
+	* takes a json object, return string weld
+	* */
+	encode_config: function (obj, tabs) { // was .toslang
+		var weld = '',
+			tabs = tabs || 0,
+			filler = Cli.getfiller(obj);
+		for (var i in obj) {
+			var sub = obj[i];
+			if (typeof sub === 'object') {
+				if (!(isarr(sub) && sub.length === 0)) { // ignore empty arrays
+					weld += '\t'.repeat(tabs) + i + '\n';
+					weld += ( Weld.encode_config( sub, tabs+1 ) );
+				}
+			} else {
+				if (isarr(obj)) {
+					weld += '\t'.repeat(tabs) + sub + '\n';
+				} else if (obj instanceof Object) {
+					weld += '\t'.repeat(tabs) + filler(i) + ' ' + sub + '\n';
+				} else {
+					weld += '\t'.repeat(tabs) + filler(i) + ' ' + sub + '\n';
+				}
+			}
+		}
+		return weld;
+	},
+};
+Weld.decode_config = Weld.parse_config;
+Weld.encode = Weld.encode_config;
+/*
+* used when mapping an uglified key to an original key
+* @param String optional key
+* @return Uglified unique key
+*/
+var ugly_uid = 0, ugly_seed = 'ثحخقضصطظذا';
+Weld.uglify_key = function (key) {
+	if (key === undefined) key = ugly_uid++;
+	var uglykey = '',
+		seed = ugly_seed,
+		uid = (key).toString();
+	if (debug === false) {
+		uid = uid.split('');
+		for (var i in uid) {
+			uglykey += seed[ uid[i] ];
+		}
+	} else {
+		uglykey = uid;
+	}
+	return '_'+uglykey;
+};
+/*
+* this function adds the value to the map if it isn't already there
+* if value === true, it'll auto gen unique uglykey
+* mapit( map, key, value )
+* mapit( map, value ) // uses value as both key & value
+*/
+Weld.map_key = function (map, key, value) {
+	if (value === undefined) value = key;
+	if (map[key] === undefined) {
+		if (value === true) {
+			if (debug) {
+				value = '_'+key+'_';
+			} else {
+				value = Weld.uglify_key();
+			}
+		}
+		map[key] = value;
+	} else {
+		return map[key];
+	}
+	return value;
+};
+})();
+/*
+* This sub-module extends Weld to dynamically convert Weld <--> HTML
+*/
+;(function(){
+const voidtags = [
+	'!doctype',
+	'area' ,
+	'base' ,
+	'br' ,
+	'col' ,
+	'command' ,
+	'embed' ,
+	'hr' ,
+	'img' ,
+	'input' ,
+	'keygen' ,
+	'link' ,
+	'meta' ,
+	'param' ,
+	'source' ,
+	'track' ,
+	'use' ,
+	'wbr'
+],
+quotesmask = /[ '"]/,
+pathmask = '\\w\\=\\:\\;\\.\\#\\(\\)\\%\\,\\-\\!\\&\\/\\# ا-ي',
+/*
+* this should also return a map of all uglifiable keywords
+* this map should add to slang.keywords using $.unique
+* this map is an object, key: uglified-version
+*
+* this module should also accept a map second parameter
+* when this parameter is spec'd, uglified code + map will be returned
+* the returned map can then be passed by slang to next modules
+* and they can use it as a guide
+*/
+_render = function (json, options) {
+	var domstr = '';
+	for (var i in json) {
+		var tag = json[i],
+			indent = '\n'+' '.repeat(tag.level);
+		if (options.compress) {
+			indent = '';
+		}
+		var attribstr = '';
+		if (tag.id.length > 0) {
+			if (options.uglify === true) {
+				for (var k in tag.id) {
+					tag.id[k] = Weld.map_key(options.map, tag.id[k], true);
+				}
+			}
+			var joined = tag.id.join(' ').trim();
+			attribstr += ' id=';
+			if (joined.match(quotesmask)) {
+				attribstr += '"'+joined+'"';
+			} else {
+				attribstr += joined;
+			}
+		}
+		if (tag.classes.length > 0) {
+			if (options.uglify === true) {
+				for (var k in tag.classes) {
+					tag.classes[k] = Weld.map_key(options.map, tag.classes[k], true);
+				}
+			}
+			var joined = tag.classes.join(' ').trim();
+			attribstr += ' class=';
+			if (joined.match(quotesmask)) {
+				attribstr += '"'+joined+'"';
+			} else {
+				attribstr += joined;
+			}
+		}
+		if (tag.attributes) {
+			for (var j in tag.attributes) {
+				var attrib = tag.attributes[j];
+				attribstr += ' '+j.substr(1);
+				if (attrib.length) {
+					if (attrib.match(quotesmask)) {
+						attribstr += '="'+attrib+'"';
+					} else {
+						attribstr += '='+attrib;
+					}
+				}
+			}
+		}
+		if (tag.dataset) {
+			if (options.uglify === true) { // EXPERIMENTAL
+				var newdataset = {};
+				for (var k in tag.dataset) {
+					newdataset[ Weld.map_key(options.map, k, true) ] = Weld.map_key(options.map, tag.dataset[k], true);
+				}
+				tag.dataset = newdataset;
+			}
+			for (var j in tag.dataset) {
+				if (tag.dataset.hasOwnProperty(j)) {
+					var data = tag.dataset[j];
+					attribstr += ' data-'+j;
+					if (data.trim().length) {
+						attribstr += '=';
+						if (data.match(quotesmask)) {
+							attribstr += '"'+data+'"';
+						} else {
+							attribstr += data;
+						}
+					}
+				}
+			}
+		}
+		if (voidtags.includes(tag.name.toLowerCase())) {
+			domstr += ''
+					+indent
+					+'<' + tag.name
+					+ attribstr
+					+ '>'
+					;
+		} else {
+			var childrenstr = '';
+			if (tag.children.length > 0) {
+				childrenstr += _render(tag.children, options);
+			}
+			domstr += ''
+					+indent
+					+'<' + tag.name
+					+ attribstr
+					+ '>'
+						+ tag.text
+								.replace(/\n/g, '')
+						+ childrenstr
+					+'</' + tag.name + '>'
+					+indent
+					;
+		}
+	}
+	return domstr;
+},
+render = function (json, options) {
+	options = options || {};
+	options.map = options.map || {};
+	return _render(json, options).trim();
+},
+parse = function (parsedslang, options) {
+	parsedslang = parsedslang || [];
+	options = options || {};
+	options.map = options.map || {};
+	var dictionary = {};
+	for (var i in parsedslang) {
+		var command = parsedslang[i];
+		var tag = {
+			uid: parseInt(command.uid),
+			attributes: {},
+			dataset: {},
+			classes: [],
+			text: '', // textnode
+			id: [],
+			level: command.level,
+			parent: command.parent,
+			children: []
+		};
+		var textnode = command.line.match(/^['"](.*)["']$/) || '';
+		if ( command.line.startsWith('//') || command.line.startsWith('+htm') ) {
+		} else
+		if (textnode) {
+			var parent = dictionary[tag.parent];
+			parent.text.length > 0 ? parent.text += '\n' + textnode[1] : parent.text += textnode[1];
+		} else {
+			dictionary[tag.uid] = tag;
+			if (command.parent > -1) {
+				if (dictionary[command.parent])
+					dictionary[command.parent].children.push( tag );
+				else
+					$.log.s( 'ge-htm: parent not found\n'+ Weld.encode(command) );
+			}
+			var matches = command.line.match(/([\!\w\_\-]*)(\#*[\w\_\-\#]*)*(\.*[\w\_\-\.]*)*/) || '';
+			if (matches) {
+				tag.name = (matches[1] || 'div');
+				if (matches[3]) tag.classes = tag.classes.concat( matches[3].split('.') );
+			}
+			matches = command.line.match(/(^| )*\#([a-zA-Z0-9\_\-]*)/g) || '';
+			if (matches.length) {
+				for (var j in matches) {
+					var attrib = matches[j].match(/\#([a-zA-Z0-9\_\-]*)/);
+					if (attrib) {
+						attrib = attrib[1].trim();
+						if (attrib.length && tag.id.indexOf(attrib) === -1)
+							tag.id.push( attrib );
+					}
+				}
+			}
+			command.line = command.line.replace(/(^| )['"]([\s\S]*)['"]/m, function () {
+				if (arguments) tag.text += arguments[2] || '';
+				return '';
+			});
+			var regex = new RegExp('(\\@[a-zA-Z0-9\\-\\:ا-ي]*(\\(['+pathmask+']*\\))*[ $]*)', 'g');
+			matches = command.line.match(regex) || '';
+			if (matches.length) {
+				for (var j in matches) {
+					var attrib = matches[j];
+					if (typeof attrib === 'string') {
+						attrib = attrib.match(/\@([a-zA-Z0-9\-\:ا-ي]*)*\(*(.*)*\)*/);
+						tag.attributes['_'+attrib[1]] = (attrib[2] || '').trim().slice(0, -1);
+					}
+				}
+			}
+			command.line = command.line.replace(regex, '');
+			regex = /\[([\-\_\w\= ا-ي])+\]/g;
+			matches = command.line.match(regex) || '';
+			if (matches.length) {
+				for (var j in matches) {
+					var attrib = matches[j];
+					if (attrib) {
+						attrib = attrib.substr(1, attrib.length-2).split('=');
+						tag.dataset[attrib[0]] = attrib[1] || '';
+					}
+				}
+			}
+			command.line = command.line.replace(regex, '') || '';
+			matches = command.line.match(/ +\.([a-zA-Z0-9\-\_]*)/g) || '';
+			if (matches.length) {
+				for (var j in matches) {
+					var attrib = matches[j].match(/\.([a-zA-Z0-9\-\_]*)/);
+					if (attrib) {
+						tag.classes.push( attrib[1] );
+					}
+				}
+			}
+			if (options.uglify === true) {
+				for (var k in tag.id) {
+					Weld.map_key(options.map, tag.id[k], true);
+				}
+				for (var k in tag.classes) {
+					Weld.map_key(options.map, tag.classes[k], true);
+				}
+				for (var k in tag.dataset) {
+					Weld.map_key(options.map, tag.dataset[k], true);
+				}
+			}
+		}
+	}
+	var tree = [];
+	for (var i in dictionary) {
+		if (dictionary.hasOwnProperty(i) && dictionary[i].parent < 0) {
+			tree.push(dictionary[i]);
+		}
+	}
+	var parsedhtm = render( tree, options );
+	return {
+		parsed: parsedhtm,
+		map: options.map
+	};
+};
+Weld.decode_htm = function ( text ) {
+	return parse( Weld.parse_weld( text ) );
+};
+/* TODO this doesn't work just yet, needs more dev
+* converts htm back to weld, each child level is represented by a \t
+* takes an html object, return string weld
+* */
+Weld.encode_htm = function (obj, tabs) {
+	var weld = '',
+		tabs = tabs || 0,
+		filler = Cli.getfiller(obj);
+	for (var i in obj) {
+		var sub = obj[i];
+		if (typeof sub === 'object') {
+			if (!(isarr(sub) && sub.length === 0)) { // ignore empty arrays
+				weld += '\t'.repeat(tabs) + i + '\n';
+				weld += ( Weld.encode_config( sub, tabs+1 ) );
+			}
+		} else {
+			if (isarr(obj)) {
+				weld += '\t'.repeat(tabs) + sub + '\n';
+			} else if (obj instanceof Object) {
+				weld += '\t'.repeat(tabs) + filler(i) + ' ' + sub + '\n';
+			} else {
+				weld += '\t'.repeat(tabs) + filler(i) + ' ' + sub + '\n';
+			}
+		}
+	}
+	return weld;
+};
 })();
 /* lists have an adapter $.array, it contains the objects present in the dom list
 *
@@ -3489,21 +4006,21 @@ var Preferences, preferences;
 		},
 	};
 	var buildnum = preferences.get('#', 1);
-	if ( buildnum != 345 ) {
+	if ( buildnum != 443 ) {
 		preferences.pop(3); // ruid
 		preferences.pop('@'); // last sync time
 		preferences.pop(4); // list view cache
 		preferences.pop(6); // initial sync done
 	}
-	preferences.set('#', 345);
+	preferences.set('#', 443);
 	Hooks.set('ready', function () {
-		if ( buildnum != 345 ) {
+		if ( buildnum != 443 ) {
 			$.taxeer('seeghahjadeedah', function () {
 				Hooks.run('seeghahjadeedah', buildnum);
 			}, 2000);
 		}
 	});
-	$.log.s( 345 );
+	$.log.s( 443 );
 })();
 var activity;
 ;(function(){
@@ -4072,7 +4589,7 @@ var Settings, settings, currentad;
 		open('https://github.com/xorasan/mudeer', '_blank');
 	}, 'iconmudeer']);
 	if (Config.repo) {
-		add([Config.appname+' '+345, function () {
+		add([Config.appname+' '+443, function () {
 			return Config.sub;
 		}, function () {
 			open(Config.repo, '_blank');
@@ -4593,7 +5110,9 @@ var Templates, templates, namaavij;
 * all keyups are pd'd, fig out logic for keydowns in .press
 * modifiers now do work! 13 sep 2023
 */
-var Softkeys, softkeys, K, P, debug_softkeys = 0;
+var Softkeys, softkeys,
+	K, P, // TODO fig out better global names for these and transition all deps to it SK SP?
+	debug_softkeys = 0;
 ;(function(){
 	K = { // key code names
 		mt: 'microphonetoggle',
@@ -6341,6 +6860,56 @@ async function get_processes() {
 Apps.get_processes = get_processes;
 Apps.get_windows = get_windows;
 })();
+var Bluetooth = {
+	adapters: {},
+	devices: {},
+}, bluetooth_list;
+;(function(){
+	'use strict';
+	var module_name = 'bluetooth', dom_keys;
+	function dim(v) { return !isundef(v) ? '<span class=dim>'+v+'</span>' : ''; }
+	async function connect(uid) {
+		var device_obj = await dbus.systemBus().getProxyObject('org.bluez', uid);
+		var device = device_obj.getInterface('org.bluez.Device1');
+		await device.Connect();
+	}
+	Hooks.set('ready', function (arg_one) {
+		dom_keys = View.dom_keys(module_name);
+		bluetooth_list = List( dom_keys.list ).id_prefix('bluetooth').list_item('control_item');
+		bluetooth_list.listen_on_press(function (o, k) {
+			if (k == K.en) { // enter
+				connect(o.uid);
+			}
+		});
+	});
+	Hooks.set('view-ready', async function (arg_one) { if (View.is_active_fully(module_name)) {
+		var objects = await Bluetooth.object_manager.GetManagedObjects()
+		for (var uid in objects) {
+			var o = objects[uid];
+			var device = o['org.bluez.Device1'];
+			var adapter = o['org.bluez.Adapter1'];
+			if (adapter) {
+				Bluetooth.adapters[uid] = adapter;
+				bluetooth_list.set({ uid, icon: 'iconbluetooth',
+					title: adapter.Alias.value,
+					info$h: dim(adapter.Address.value),
+					state: adapter.Discoverable.value ? 'Discoverable' : 'Hidden',
+					switch: adapter.Powered.value ? 'ON' : 'OFF',
+				});
+			} else
+			if (device) {
+				Bluetooth.devices[uid] = device;
+				bluetooth_list.set({ uid, icon: 'iconbluetooth',
+					title: device.Alias.value,
+					info$h: dim(device.Address.value),
+				});
+			}
+		}
+		if (View.is_active_fully(module_name)) {
+			bluetooth_list.select();
+		}
+	} });
+})();
 var controls_list, Dashboard = {}, memory_graph = [], battery_graph = [];
 const dbus = require('./deps/dbus-next');
 ;(async function(){
@@ -6348,10 +6917,10 @@ const dbus = require('./deps/dbus-next');
 	var dom_keys;
 	const { exec } = require('child_process');
 	const os = require('os');
+	const os_utils = require('./deps/os-utils');
 	const fs = require('fs');
 	dbus.setBigIntCompat(true);
 	let bus = dbus.systemBus();
-	let Variant = dbus.Variant;
 	function bytesToGB(bytes) {
 		return (bytes / (1024 * 1024 * 1024)).toFixed(2);
 	}
@@ -6383,6 +6952,14 @@ const dbus = require('./deps/dbus-next');
 		}
 		return out.join('.') + '<small class="dim">'+units[index]+'</small>';
 	};
+	function format_small_point(pct, sign = '%', places = 1) {
+		var out = parsefloat(pct, places)+'';
+		out = out.split('.');
+		if (out.length > 1) {
+			out[1] = '<small>.'+(out[1])+'</small>';
+		}
+		return out[0]+out.slice(1).join(' ') + '<small class="dim">'+sign+'</small>';
+	}
 	var update_memory_TO, max_mem_graph_steps = 60 * 10; // 600 * 1s = 600s / 60s = 5m
 	function update_memory_graph() {
 		var graph = controls_list.get_item_keys('mem').graph;
@@ -6479,7 +7056,6 @@ const dbus = require('./deps/dbus-next');
 		if ([1, 5].includes(state) && index === 0) index = 1;
 		return 'battery'+([1, 5].includes(state) ? 'charging' : '')+thresholds[index];
 	}
-	Dashboard.battery_state_to_icon = battery_state_to_icon;
 	function update_battery_item() {
 		var icon, pct_sign = '<small class="dim">%</small>'; // TODO Weld(`small .dim "%"`)
 		var state = Dashboard.battery_state;
@@ -6555,6 +7131,29 @@ const dbus = require('./deps/dbus-next');
 			if (yes) update_battery_item();
 		});
 		battery_interval();
+	};
+	var update_wifi_TO;
+	Dashboard.wifi = { down: 0, up: 0 };
+	Dashboard.update_wifi = async function () {
+		controls_list.set({ uid: 'wifi', state: '...' });
+		var stats = await os_utils.netstat.stats();
+		stats.forEach(function (o, i) {
+			if (o.interface == 'wlan0') {
+				Dashboard.wifi.down = parseint(o.inputBytes);
+				Dashboard.wifi.up = parseint(o.outputBytes);
+			}
+		});
+		var clone = controls_list.set({
+			uid: 'wifi',
+			state$h: formatBytes(Dashboard.wifi.down+Dashboard.wifi.up),
+			out_str$h: formatBytes(Dashboard.wifi.up),
+			in_str$h: formatBytes(Dashboard.wifi.down),
+		});
+		Webapp.icons(clone);
+		clearTimeout(update_wifi_TO);
+		update_wifi_TO = setTimeout(function () {
+			Dashboard.update_wifi();
+		}, 60 * 1000);
 	};
 	var update_storage_TO;
 	Dashboard.update_storage = function () {
@@ -6644,12 +7243,15 @@ const dbus = require('./deps/dbus-next');
 		let obj = await bus.getProxyObject('org.bluez', '/org/bluez/hci0');
 		let adapter = obj.getInterface('org.bluez.Adapter1');
 		let properties = obj.getInterface('org.freedesktop.DBus.Properties');
+		let root_obj = await bus.getProxyObject('org.bluez', '/');
+		let object_manager = root_obj.getInterface('org.freedesktop.DBus.ObjectManager');
 		var bluetooth_powered = await properties.Get('org.bluez.Adapter1', 'Powered');
 		controls_list.set({
 			uid: 'bt',
 			switch: bluetooth_powered.value ? 'ON' : 'OFF',
 		});
-		Dashboard.bt_props = properties;
+		Bluetooth.properties = properties;
+		Bluetooth.object_manager = object_manager;
 		properties.on('PropertiesChanged', (iface, changed, invalidated) => {
 			for (let prop of Object.keys(changed)) {
 				if (prop == 'Powered') {
@@ -6666,21 +7268,88 @@ const dbus = require('./deps/dbus-next');
 			}
 		});
 	};
+	var update_processor_TO, processor_graph = [], max_cpu_graph_steps = 60 * 5;
+	Dashboard.processor = {};
+	function update_processor_graph() {
+		var graph = controls_list.get_item_keys('cpu').graph;
+		var w = graph.width, h = graph.height;
+		var canvas = Canvas( graph );
+		var step_width = (w + 10) / max_cpu_graph_steps; // px
+		canvas.linewidth(2);
+		var points = [];
+		for (var i = 0; i < processor_graph.length; ++i) {
+			var o = processor_graph[i];
+			points.push({
+				x: (step_width * ( max_cpu_graph_steps - processor_graph.length ) ) + i*step_width,
+				y: h*o
+			});
+		}
+		if (processor_graph.length) {
+			points.unshift( { x: points[0].x, y: h } );
+			points.push( { x: points[points.length-1].x, y: h } );
+		}
+		var color = Themes.get('accentt');
+		canvas.clear();
+		canvas.line(points, -1, {
+			w: 0,
+			h: h*2.5,
+			stops: [color, 'transparent']
+		});
+	}
+	async function get_processor_cores() {
+		var avg_usage = await os_utils.cpu.usage();
+		controls_list.set({
+			uid: 'cpu',
+			switch$h: format_small_point(avg_usage),
+		});
+		processor_graph.push(1-avg_usage/100);
+		if (processor_graph.length > max_cpu_graph_steps) processor_graph.shift();
+		update_processor_graph();
+		clearTimeout(update_processor_TO);
+		update_processor_TO = setTimeout(async function () {
+			await get_processor_cores();
+		}, 1000);
+	}
+	Dashboard.update_processor = function () {
+		controls_list.set({
+			uid: 'cpu',
+			switch: '...',
+		});
+		get_processor_cores();
+	};
 	Hooks.set('ready', function (arg_one) {
 		Webapp.header();
 		Webapp.status_bar_padding();
 		Webapp.tall_screen();
 		dom_keys = View.dom_keys('main');
 		controls_list = List( dom_keys.list ).id_prefix('controls').list_item('control_item');
+		controls_list.listen_on_press(function (o, k) {
+			if (k == K.en) { // enter
+				if (o.uid == 'bt') Hooks.run('view', 'bluetooth');
+			}
+		});
 		Dashboard.update_time();
-		controls_list.set({ uid: 'wifi' , icon: 'iconwifi', title: 'WiFi', switch: 'ON' });
+		controls_list.set({ uid: 'wifi' , icon: 'iconwifi', title: 'WiFi', switch: 'ON',
+			info$h: Weld.decode_htm([
+				'.flex .center',
+				'\t.mini [icon=iconcallreceived] [id=in]',
+				'\t[id=in_str]',
+				'\t.padl .padr',
+				'\t.mini [icon=iconcallmade] [id=out]',
+				'\t[id=out_str]',
+			].join('\n')).parsed,
+		});
+		controls_list.select_by_uid('time');
 		controls_list.set({ uid: 'bt' , icon: 'iconbluetooth', title: 'Bluetooth' });
 		controls_list.set({ uid: 'store', icon: 'iconstorage', title: 'Storage', switch: 'ixtaf' });
+		controls_list.set({ uid: 'cpu' , icon: 'icontoys', title: 'Processor', switch: 'ixtaf' });
 		controls_list.set({ uid: 'mem' , icon: 'iconmemory', title: 'Memory', switch: 'ixtaf' });
 		controls_list.set({ uid: 'bat' , icon: 'iconbatteryfull', title: 'Battery', switch: 'ixtaf' });
 		controls_list.set({ uid: 'apps' , icon: 'iconapps', title: 'Apps', switch: 'ixtaf' });
+		Dashboard.update_wifi();
 		Dashboard.update_bluetooth();
 		Dashboard.update_storage();
+		Dashboard.update_processor();
 		Dashboard.update_memory();
 		Dashboard.update_apps();
 		Dashboard.update_battery();
@@ -6704,6 +7373,7 @@ const dbus = require('./deps/dbus-next');
 	}
 	listener('resize', on_resize);
 	Hooks.set('view-ready', function (arg_one) { if (View.is_active_fully('main')) {
+		Softkeys.list.basic(controls_list);
 		Softkeys.remove(K.sr);
 	}});
 })();

@@ -21,3 +21,6 @@ body
 	
 	[view=main]
 		[id=list]
+	
+	[view=bluetooth]
+		[id=list] .gaph
